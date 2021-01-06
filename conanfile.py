@@ -10,7 +10,7 @@ from conans import CMake, ConanFile, tools
 
 class QtBreezeIconsConan(ConanFile):
     name = 'qt-breeze-icons'
-    version = '5.74.0'
+    version = os.getenv('KDE_VERSION', '5.74.0')
     license = 'LGPL-2.1-only'
     description = 'Conan recipe for using Breeze icons as a Qt icon theme'
     url = 'https://github.com/DragoonBoots/qt-breeze-icons'
