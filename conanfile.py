@@ -9,14 +9,15 @@ from conans import CMake, ConanFile, tools
 
 
 class QtBreezeIconsConan(ConanFile):
-    name = "qt-breeze-icons"
-    version = "5.74.0"
-    license = "LGPL-2.1-only"
-    url = "https://github.com/DragoonBoots/qt-breeze-icons"
-    topics = ("Qt",)
+    name = 'qt-breeze-icons'
+    version = '5.74.0'
+    license = 'LGPL-2.1-only'
+    description = 'Conan recipe for using Breeze icons as a Qt icon theme'
+    url = 'https://github.com/DragoonBoots/qt-breeze-icons'
+    topics = ["Qt"]
     no_copy_source = True
-    options = {"pattern": 'ANY'}
-    default_options = {"pattern": '.+'}
+    options = dict(pattern='ANY')
+    default_options = dict(pattern='.+')
 
     def source(self):
         git = tools.Git(folder='breeze-icons')
@@ -30,6 +31,7 @@ class QtBreezeIconsConan(ConanFile):
         return cmake
 
     def _icon_paths(self, path: Path):
+        """Iterate through the given directory for requested icon files"""
         if path.is_dir():
             for child in path.iterdir():
                 yield from self._icon_paths(child)
