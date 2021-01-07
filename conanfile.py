@@ -72,26 +72,29 @@ class QtBreezeIconsConan(ConanFile):
             IconTheme(name='breeze-light', dir_name='icons'),
             IconTheme(name='breeze-dark', dir_name='icons-dark'),
         )
-        # Hold a list of installed icons for copying
-        qrc_paths = []
+        # Hold a list of installed icons for copying and generate the QRC
+        root = ET.Element('RCC', {'version': '1.0'})
+        qresource = ET.SubElement(root, 'qresource', {'prefix': '/icons'})
         for theme in icon_themes:
             source_icons = Path(self.source_folder) / theme.dir_name
             generated_icons = Path(self.build_folder) / theme.dir_name / 'generated'
             dirs = (source_icons, generated_icons)
             for directory in dirs:
                 for path in self._icon_paths(directory):
-                    qrc_paths.extend(
-                        self.copy(str(path.relative_to(directory)), src=str(directory),
-                                  dst='share/{}'.format(theme.name), symlinks=True))
-            qrc_paths.extend(self.copy('index.theme', src=str(source_icons), dst='share/{}'.format(theme.name)))
+                    copied = self.copy(str(path.relative_to(directory)), src=str(directory),
+                                       dst='share/{}'.format(theme.name), symlinks=True)
+                    for new_path in copied:
+                        print('Adding {}'.format(new_path))
+                        rel_path = Path(new_path).relative_to(Path(self.package_folder) / 'share')
+                        file = ET.SubElement(qresource, 'file')
+                        file.text = str(rel_path)
+            # Copy theme file and add to QRC
+            for theme_path in self.copy('index.theme', src=str(source_icons), dst='share/{}'.format(theme.name)):
+                rel_path = Path(theme_path).relative_to(Path(self.package_folder) / 'share')
+                file = ET.SubElement(qresource, 'file')
+                file.text = str(rel_path)
 
         # Generate the QRC
-        root = ET.Element('RCC', {'version': '1.0'})
-        qresource = ET.SubElement(root, 'qresource', {'prefix': '/icons'})
-        for path in qrc_paths:
-            rel_path = Path(path).relative_to(Path(self.package_folder) / 'share')
-            file = ET.SubElement(qresource, 'file')
-            file.text = str(rel_path)
         qrc_file_path = Path(self.build_folder) / 'breeze-icons.qrc'
         out = '<!DOCTYPE RCC>' + os.linesep + ET.tostring(root, encoding='unicode', xml_declaration=False)
         with qrc_file_path.open('wt') as qrc_file:
@@ -101,6 +104,3 @@ class QtBreezeIconsConan(ConanFile):
     def package_info(self):
         self.cpp_info.name = 'BreezeIcons'
         self.cpp_info.resdirs = ["share"]
-
-    def package_id(self):
-        self.info.header_only()
