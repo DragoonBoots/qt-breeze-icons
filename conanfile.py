@@ -44,6 +44,7 @@ class QtBreezeIconsConan(ConanFile):
         cmake.definitions['ECM_DIR'] = str(Path(self.deps_cpp_info['ECM'].res_paths[0]) / 'ECM' / 'cmake')
         cmake.definitions['BINARY_ICONS_RESOURCE'] = False
         cmake.definitions['SKIP_INSTALL_ICONS'] = True
+        cmake.definitions['WITH_ICON_GENERATION'] = False
         # This will create generated icons (e.g. 24x24 versions)
         cmake.configure()
         return cmake
