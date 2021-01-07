@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push: ~
+  pull_request: ~
+  workflow_dispatch: ~
+
+jobs:
+  conan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qt_version: 5.14.2
+            breeze_version: 5.78.0-rc1
+          - qt_version: 5.13.2
+            breeze_version: 5.77.0
+          - qt_version: 5.12.9
+            breeze_version: 5.76.0
+          - qt_version: 5.11.3
+            breeze_version: 5.65.0
+          - qt_version: 5.10.1
+            breeze_version: 5.59.0
+          - qt_version: 5.9.9
+            breeze_version: 5.54.0
+
+    env:
+      CONAN_USERNAME: dragoonboots
+      CONAN_REPO: qt-breeze-icons
+      CONAN_CHANNEL: testing
+      CONAN_PASSWORD: ${{secrets.CONAN_KEY}}
+      CONAN_UPLOAD: https://api.bintray.com/conan/dragoonboots/conan-packages
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set version
+        run: echo "${{matrix.breeze_version}}" > version.txt
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+      - name: Install package tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install conan_package_tools lxml
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v2
+        with:
+          dir: ${{github.workspace}}/.qt
+          version: ${{matrix.qt_version}}
+          setup-python: false
+      - name: Build Conan package
+        run: python build.py

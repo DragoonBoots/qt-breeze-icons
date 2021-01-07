@@ -10,24 +10,42 @@ from conans import CMake, ConanFile, tools
 
 class QtBreezeIconsConan(ConanFile):
     name = 'qt-breeze-icons'
-    version = os.getenv('KDE_VERSION', '5.74.0')
+    kde_stable_version = '5.77.0'
     license = 'LGPL-2.1-only'
     description = 'Conan recipe for using Breeze icons as a Qt icon theme'
     url = 'https://github.com/DragoonBoots/qt-breeze-icons'
     topics = ["Qt"]
     no_copy_source = True
+    exports = ('version.txt',)
     options = dict(pattern='ANY')
     default_options = dict(pattern='.+')
 
+    def _get_version(self):
+        version_file_path = Path(self.recipe_folder) / 'version.txt'
+        if version_file_path.is_file():
+            with version_file_path.open(mode='rt') as version_file:
+                return version_file.readline().strip()
+        else:
+            return self.kde_stable_version
+
+    def set_version(self):
+        self.version = self._get_version()
+
+    def build_requirements(self):
+        self.build_requires("ECM/{}@dragoonboots/stable".format(self._get_version()))
+
     def source(self):
-        git = tools.Git(folder='breeze-icons')
+        # Zip downloads cause corrupted symlinks, so git clone is required
+        git = tools.Git()
         git.clone('https://invent.kde.org/frameworks/breeze-icons.git', branch='v{}'.format(self.version), shallow=True)
 
     def _configure_cmake(self) -> CMake:
         cmake = CMake(self)
+        cmake.definitions['ECM_DIR'] = str(Path(self.deps_cpp_info['ECM'].res_paths[0]) / 'ECM' / 'cmake')
+        cmake.definitions['BINARY_ICONS_RESOURCE'] = False
+        cmake.definitions['SKIP_INSTALL_ICONS'] = True
         # This will create generated icons (e.g. 24x24 versions)
-        cmake.configure(source_dir='breeze-icons',
-                        defs={'BINARY_ICONS_RESOURCE': False, 'SKIP_INSTALL_ICONS': True})
+        cmake.configure()
         return cmake
 
     def _icon_paths(self, path: Path):
@@ -57,7 +75,7 @@ class QtBreezeIconsConan(ConanFile):
         # Hold a list of installed icons for copying
         qrc_paths = []
         for theme in icon_themes:
-            source_icons = Path(self.source_folder) / 'breeze-icons' / theme.dir_name
+            source_icons = Path(self.source_folder) / theme.dir_name
             generated_icons = Path(self.build_folder) / theme.dir_name / 'generated'
             dirs = (source_icons, generated_icons)
             for directory in dirs:
