@@ -2,6 +2,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from xml.dom import minidom
 
@@ -18,7 +19,7 @@ class QtBreezeIconsConan(ConanFile):
     no_copy_source = True
     exports = ('version.txt',)
     options = dict(pattern='ANY')
-    default_options = dict(pattern=None)
+    default_options = dict(pattern='.+')
 
     def _get_version(self):
         version_file_path = Path(self.recipe_folder) / 'version.txt'
@@ -49,16 +50,57 @@ class QtBreezeIconsConan(ConanFile):
         cmake.configure()
         return cmake
 
-    def _icon_paths(self, path):
+    def _icon_paths(self, path: Path):
         """Iterate through the given directory for requested icon files"""
-        for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
-            for file in filenames:
-                stem, ext = os.path.splitext(file)
-                matched = (not self.options.pattern) or re.fullmatch(str(self.options.pattern), stem) is not None
-                if ext == '.svg' and matched:
-                    yield os.path.join(dirpath, file)
-            for child in dirnames:
-                yield from self._icon_paths(os.path.join(dirpath, child))
+        paths = set()
+        if path.is_dir():
+            for child in path.iterdir():
+                paths.update(self._icon_paths(child))
+        elif path.is_file():
+            if path.suffix == '.svg' and re.fullmatch(str(self.options.pattern), path.stem) is not None:
+                paths.add(path)
+        return paths
+
+    class ProgressBar:
+        dots_per_line = 50
+
+        def __init__(self, total: int):
+            self.total = total
+            self.count = 0
+            self._count_width = str(len(str(self.total)))
+            self._last_step_time = datetime.now()
+            self._average_step_time = None
+            self._print_progress()
+
+        def increment(self, count: int = 1):
+            this_step_time = datetime.now()
+            if self._average_step_time is None:
+                self._average_step_time = this_step_time - self._last_step_time
+            else:
+                self._average_step_time = (this_step_time - self._last_step_time + self._average_step_time) / 2
+            self._last_step_time = this_step_time
+            for i in range(count):
+                self.count += 1
+                if self.count % self.dots_per_line == 0:
+                    self._print_progress()
+                print('.', end='')
+
+        def finish(self):
+            if self.count < self.total:
+                self.increment(self.total - self.count)
+            print()
+            print()
+
+        def _print_progress(self):
+            # Writes, for example, "0:00:00 remaining:   0/100 "
+            if self._average_step_time is None:
+                # Extra spaces line it up with time printing
+                remaining = '  Unknown time'
+            else:
+                remaining = self._average_step_time * (self.total - self.count)
+            progress = '{remaining} remaining: {count: >{width}}/{total}'.format(
+                width=self._count_width, remaining=remaining, count=self.count, total=self.total)
+            print(os.linesep + progress, end=' ')
 
     def build(self):
         cmake = self._configure_cmake()
@@ -79,24 +121,33 @@ class QtBreezeIconsConan(ConanFile):
         root = ET.Element('RCC', {'version': '1.0'})
         qresource = ET.SubElement(root, 'qresource', {'prefix': '/icons'})
         for theme in icon_themes:
-            source_icons = os.path.join(self.source_folder, theme.dir_name)
-            generated_icons = os.path.join(self.build_folder,  theme.dir_name, 'generated')
+            print('Copying {theme}...'.format(theme=theme.name))
+            source_icons = Path(self.source_folder) / theme.dir_name
+            generated_icons = Path(self.build_folder) / theme.dir_name / 'generated'
             dirs = (source_icons, generated_icons)
             for directory in dirs:
-                for path in self._icon_paths(directory):
-                    copied = self.copy(os.path.relpath(path, directory), src=str(directory),
+                print('Packaging from {dir}...'.format(dir=directory))
+                paths = list(self._icon_paths(directory))
+                # Sorting helps keep things neat for potential debugging
+                paths.sort()
+                progressbar = self.ProgressBar(len(paths))
+                for path in paths:
+                    # copied is a list of packaged paths
+                    copied = self.copy(str(path.relative_to(directory)), src=str(directory),
                                        dst='share/{}'.format(theme.name), symlinks=True)
                     for new_path in copied:
-                        print('Adding {}'.format(new_path))
+                        rel_path = Path(new_path).relative_to(Path(self.package_folder) / 'share')
                         file = ET.SubElement(qresource, 'file')
-                        file.text = os.path.relpath(new_path, os.path.join(self.package_folder, 'share'))
+                        file.text = str(rel_path)
+                    progressbar.increment()
+                progressbar.finish()
             # Copy theme file and add to QRC
             for theme_path in self.copy('index.theme', src=str(source_icons), dst='share/{}'.format(theme.name)):
+                rel_path = Path(theme_path).relative_to(Path(self.package_folder) / 'share')
                 file = ET.SubElement(qresource, 'file')
-                file.text = os.path.relpath(theme_path, os.path.join(self.package_folder, 'share'))
+                file.text = str(rel_path)
 
         # Generate the QRC
-        print("Creating QRC")
         qrc_file_path = Path(self.build_folder) / 'breeze-icons.qrc'
         out = '<!DOCTYPE RCC>' + os.linesep + ET.tostring(root, encoding='unicode', xml_declaration=False)
         with qrc_file_path.open('wt') as qrc_file:
