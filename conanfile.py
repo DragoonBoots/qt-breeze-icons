@@ -18,7 +18,7 @@ class QtBreezeIconsConan(ConanFile):
     no_copy_source = True
     exports = ('version.txt',)
     options = dict(pattern='ANY')
-    default_options = dict(pattern='.+')
+    default_options = dict(pattern=None)
 
     def _get_version(self):
         version_file_path = Path(self.recipe_folder) / 'version.txt'
@@ -49,14 +49,16 @@ class QtBreezeIconsConan(ConanFile):
         cmake.configure()
         return cmake
 
-    def _icon_paths(self, path: Path):
+    def _icon_paths(self, path):
         """Iterate through the given directory for requested icon files"""
-        if path.is_dir():
-            for child in path.iterdir():
-                yield from self._icon_paths(child)
-        elif path.is_file():
-            if path.suffix == '.svg' and re.fullmatch(str(self.options.pattern), path.stem) is not None:
-                yield path
+        for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
+            for file in filenames:
+                stem, ext = os.path.splitext(file)
+                matched = (not self.options.pattern) or re.fullmatch(str(self.options.pattern), stem) is not None
+                if ext == '.svg' and matched:
+                    yield os.path.join(dirpath, file)
+            for child in dirnames:
+                yield from self._icon_paths(os.path.join(dirpath, child))
 
     def build(self):
         cmake = self._configure_cmake()
@@ -77,25 +79,24 @@ class QtBreezeIconsConan(ConanFile):
         root = ET.Element('RCC', {'version': '1.0'})
         qresource = ET.SubElement(root, 'qresource', {'prefix': '/icons'})
         for theme in icon_themes:
-            source_icons = Path(self.source_folder) / theme.dir_name
-            generated_icons = Path(self.build_folder) / theme.dir_name / 'generated'
+            source_icons = os.path.join(self.source_folder, theme.dir_name)
+            generated_icons = os.path.join(self.build_folder,  theme.dir_name, 'generated')
             dirs = (source_icons, generated_icons)
             for directory in dirs:
                 for path in self._icon_paths(directory):
-                    copied = self.copy(str(path.relative_to(directory)), src=str(directory),
+                    copied = self.copy(os.path.relpath(path, directory), src=str(directory),
                                        dst='share/{}'.format(theme.name), symlinks=True)
                     for new_path in copied:
                         print('Adding {}'.format(new_path))
-                        rel_path = Path(new_path).relative_to(Path(self.package_folder) / 'share')
                         file = ET.SubElement(qresource, 'file')
-                        file.text = str(rel_path)
+                        file.text = os.path.relpath(new_path, os.path.join(self.package_folder, 'share'))
             # Copy theme file and add to QRC
             for theme_path in self.copy('index.theme', src=str(source_icons), dst='share/{}'.format(theme.name)):
-                rel_path = Path(theme_path).relative_to(Path(self.package_folder) / 'share')
                 file = ET.SubElement(qresource, 'file')
-                file.text = str(rel_path)
+                file.text = os.path.relpath(theme_path, os.path.join(self.package_folder, 'share'))
 
         # Generate the QRC
+        print("Creating QRC")
         qrc_file_path = Path(self.build_folder) / 'breeze-icons.qrc'
         out = '<!DOCTYPE RCC>' + os.linesep + ET.tostring(root, encoding='unicode', xml_declaration=False)
         with qrc_file_path.open('wt') as qrc_file:
