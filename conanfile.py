@@ -12,7 +12,7 @@ from conans import CMake, ConanFile, tools
 class QtBreezeIconsConan(ConanFile):
     name = 'qt-breeze-icons'
     kde_stable_version = '5.77.0'
-    license = 'LGPL-2.1-only'
+    license = 'LGPL-3.0'
     description = 'Conan recipe for using Breeze icons as a Qt icon theme'
     url = 'https://github.com/DragoonBoots/qt-breeze-icons'
     topics = ["Qt"]
